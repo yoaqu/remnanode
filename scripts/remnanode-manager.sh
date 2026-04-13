@@ -8,6 +8,8 @@ STATE_DIR="/var/lib/remnanode-manager"
 INSTALL_STATE_FILE="$STATE_DIR/install-grpc-raw.pending"
 DEFAULT_SECRET_KEY="supersecretkey"
 NODE_PORT="2222"
+CONTAINER_MAX_ATTEMPTS="60"
+CONTAINER_RETRY_SECONDS="5"
 X25519_MAX_ATTEMPTS="60"
 X25519_RETRY_SECONDS="5"
 
@@ -63,6 +65,10 @@ container_exists() {
 
 container_status() {
   docker inspect -f '{{.State.Status}}' "${NODE_NAME}" 2>/dev/null || echo "missing"
+}
+
+container_restart_count() {
+  docker inspect -f '{{.RestartCount}}' "${NODE_NAME}" 2>/dev/null || echo "0"
 }
 
 extract_secret_key() {
@@ -129,15 +135,26 @@ run_compose_down() {
 }
 
 wait_for_container() {
-  local attempt
-  for attempt in {1..15}; do
-    if [[ "$(container_status)" == "running" ]]; then
+  local attempt status restart_count
+
+  echo "Waiting for the remnanode container to become ready..."
+
+  for ((attempt = 1; attempt <= CONTAINER_MAX_ATTEMPTS; attempt++)); do
+    status="$(container_status)"
+    if [[ "${status}" == "running" ]]; then
       return 0
     fi
-    sleep 2
+
+    restart_count="$(container_restart_count)"
+    echo "Container state: ${status} (restart count: ${restart_count}). Retry ${attempt}/${CONTAINER_MAX_ATTEMPTS}..."
+
+    if (( attempt < CONTAINER_MAX_ATTEMPTS )); then
+      sleep "${CONTAINER_RETRY_SECONDS}"
+    fi
   done
 
   echo "The remnanode container did not reach the running state in time."
+  echo "Final state: $(container_status) (restart count: $(container_restart_count))"
   return 1
 }
 
@@ -283,7 +300,6 @@ continue_grpc_raw_install() {
   echo
   echo "Step 5: Start remnanode"
   run_compose_up
-  wait_for_container
 
   echo
   echo "Step 6: Generate Xray x25519 keys"
