@@ -8,6 +8,8 @@ STATE_DIR="/var/lib/remnanode-manager"
 INSTALL_STATE_FILE="$STATE_DIR/install-grpc-raw.pending"
 DEFAULT_SECRET_KEY="supersecretkey"
 NODE_PORT="2222"
+X25519_MAX_ATTEMPTS="60"
+X25519_RETRY_SECONDS="5"
 
 on_error() {
   local exit_code=$?
@@ -178,14 +180,20 @@ run_x25519_command() {
 generate_private_key() {
   local output private_key attempt
 
-  for attempt in {1..15}; do
+  echo "Waiting for Xray to become ready..." >&2
+
+  for ((attempt = 1; attempt <= X25519_MAX_ATTEMPTS; attempt++)); do
     output="$(run_x25519_command)" || true
     private_key="$(printf '%s\n' "${output}" | awk -F': ' '/Private key/ { print $2; exit }')"
     if [[ -n "${private_key}" ]]; then
       printf '%s' "${private_key}"
       return 0
     fi
-    sleep 2
+
+    if (( attempt < X25519_MAX_ATTEMPTS )); then
+      echo "Xray is not ready yet. Waiting ${X25519_RETRY_SECONDS}s before retry ${attempt}/${X25519_MAX_ATTEMPTS}..." >&2
+      sleep "${X25519_RETRY_SECONDS}"
+    fi
   done
 
   echo "Could not extract the private key automatically."
