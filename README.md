@@ -8,7 +8,6 @@ Reusable Ubuntu setup script for installing and fixing a `remnawave/node`.
 - `Node installation -> gRPC + RAW`
 - Docker install
 - `/opt/remnanode/docker-compose.yml` creation
-- `xray x25519` private key generation
 - `SECRET_KEY` update from your Remnawave panel
 - container restart
 - UFW firewall configuration
@@ -30,3 +29,4 @@ Then choose:
 ```
 
 On the first run, the script updates the server and asks for a reboot. After reboot, run it again and choose the same option to finish setup.
+The installer will ask for the `SECRET_KEY` from your Remnawave panel before starting the node.

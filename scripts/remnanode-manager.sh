@@ -10,8 +10,6 @@ DEFAULT_SECRET_KEY="supersecretkey"
 NODE_PORT="2222"
 CONTAINER_MAX_ATTEMPTS="60"
 CONTAINER_RETRY_SECONDS="5"
-X25519_MAX_ATTEMPTS="60"
-X25519_RETRY_SECONDS="5"
 
 on_error() {
   local exit_code=$?
@@ -172,58 +170,6 @@ ensure_docker() {
   docker compose version >/dev/null
 }
 
-run_x25519_command() {
-  local output
-
-  output="$(docker exec "${NODE_NAME}" /usr/local/bin/xray x25519 2>&1)" && {
-    printf '%s' "${output}"
-    return 0
-  }
-
-  output="$(docker exec "${NODE_NAME}" xray x25519 2>&1)" && {
-    printf '%s' "${output}"
-    return 0
-  }
-
-  output="$(docker exec "${NODE_NAME}" rw-core x25519 2>&1)" && {
-    printf '%s' "${output}"
-    return 0
-  }
-
-  printf '%s' "${output}"
-  return 1
-}
-
-generate_private_key() {
-  local output private_key attempt
-
-  echo "Waiting for Xray to become ready..." >&2
-
-  for ((attempt = 1; attempt <= X25519_MAX_ATTEMPTS; attempt++)); do
-    output="$(run_x25519_command)" || true
-    private_key="$(printf '%s\n' "${output}" | awk -F': ' '/Private key/ { print $2; exit }')"
-    if [[ -n "${private_key}" ]]; then
-      printf '%s' "${private_key}"
-      return 0
-    fi
-
-    if (( attempt < X25519_MAX_ATTEMPTS )); then
-      echo "Xray is not ready yet. Waiting ${X25519_RETRY_SECONDS}s before retry ${attempt}/${X25519_MAX_ATTEMPTS}..." >&2
-      sleep "${X25519_RETRY_SECONDS}"
-    fi
-  done
-
-  echo "Could not extract the private key automatically."
-  echo "Last x25519 output:"
-  printf '%s\n' "${output}"
-  echo
-  echo "You can also try these commands manually:"
-  echo "sudo docker exec ${NODE_NAME} /usr/local/bin/xray x25519"
-  echo "sudo docker exec ${NODE_NAME} xray x25519"
-  echo "sudo docker exec ${NODE_NAME} rw-core x25519"
-  return 1
-}
-
 prompt_for_panel_secret_key() {
   local secret_key
   while true; do
@@ -238,19 +184,6 @@ prompt_for_panel_secret_key() {
       continue
     fi
     printf '%s' "${secret_key}"
-    return 0
-  done
-}
-
-prompt_for_private_key() {
-  local private_key
-  while true; do
-    echo
-    read -r -p "Paste the private key manually, or leave empty to stop: " private_key
-    if [[ -z "${private_key}" ]]; then
-      return 1
-    fi
-    printf '%s' "${private_key}"
     return 0
   done
 }
@@ -283,7 +216,7 @@ run_system_upgrade() {
 }
 
 continue_grpc_raw_install() {
-  local private_key panel_secret_key
+  local panel_secret_key
 
   echo
   echo "Step 2: Install Docker"
@@ -294,33 +227,20 @@ continue_grpc_raw_install() {
   mkdir -p "${APP_DIR}"
 
   echo
-  echo "Step 4: Create docker-compose.yml with a temporary SECRET_KEY"
-  write_compose_file "${DEFAULT_SECRET_KEY}"
-
-  echo
-  echo "Step 5: Start remnanode"
-  run_compose_up
-
-  echo
-  echo "Step 6: Generate Xray x25519 keys"
-  if ! private_key="$(generate_private_key)"; then
-    echo
-    echo "Automatic private key extraction failed."
-    private_key="$(prompt_for_private_key)" || return 1
-  fi
-  echo "Private key:"
-  echo "${private_key}"
-
-  echo
-  echo "Step 7: Update docker-compose.yml with the real panel SECRET_KEY"
+  echo "Step 4: Paste SECRET_KEY from your Remnawave panel"
   panel_secret_key="$(prompt_for_panel_secret_key)"
+
+  echo
+  echo "Step 5: Create docker-compose.yml"
   write_compose_file "${panel_secret_key}"
-  run_compose_down
+
+  echo
+  echo "Step 6: Start remnanode"
   run_compose_up
   wait_for_container
 
   echo
-  echo "Step 8: Configure firewall"
+  echo "Step 7: Configure firewall"
   configure_firewall
 
   rm -f "${INSTALL_STATE_FILE}"
@@ -389,28 +309,6 @@ recreate_remnanode() {
   echo "remnanode was recreated."
 }
 
-show_private_key_again() {
-  local private_key
-
-  ensure_docker
-  if ! container_exists; then
-    echo "The remnanode container does not exist yet."
-    return 0
-  fi
-
-  if [[ "$(container_status)" != "running" ]]; then
-    echo "The remnanode container is not running, so the key cannot be generated right now."
-    return 0
-  fi
-
-  if ! private_key="$(generate_private_key)"; then
-    echo "Automatic private key extraction failed."
-    return 1
-  fi
-  echo "Private key:"
-  echo "${private_key}"
-}
-
 show_fix_diagnostics() {
   local current_secret_key
 
@@ -454,8 +352,7 @@ fix_node_menu() {
     echo "Fix node:"
     echo "1. Update SECRET_KEY and restart node"
     echo "2. Recreate remnanode"
-    echo "3. Show x25519 private key again"
-    echo "4. Reconfigure firewall"
+    echo "3. Reconfigure firewall"
     echo "0. Back"
     read -r -p "Choose option: " choice
 
@@ -469,10 +366,6 @@ fix_node_menu() {
         pause_for_user
         ;;
       3)
-        show_private_key_again
-        pause_for_user
-        ;;
-      4)
         configure_firewall
         pause_for_user
         ;;
