@@ -255,7 +255,7 @@ install_grpc_raw() {
       echo
       echo "Ubuntu is still asking for a reboot."
       echo "Reboot the server first, then run this script again and choose:"
-      echo "Node installation -> gRPC + RAW"
+      echo "Node installation -> No-Domain"
       return 0
     fi
 
@@ -273,7 +273,7 @@ install_grpc_raw() {
   echo
   echo "The server now needs to reboot before the installation can continue."
   echo "After reboot, run this script again and choose:"
-  echo "Node installation -> gRPC + RAW"
+  echo "Node installation -> No-Domain"
   read -r -p "Reboot now? [Y/n]: " answer
   if [[ "${answer}" =~ ^[Nn]$ ]]; then
     echo "Reboot the server manually, then run the script again."
@@ -385,7 +385,7 @@ installation_menu() {
   while true; do
     echo
     echo "Node installation:"
-    echo "1. gRPC + RAW"
+    echo "1. No-Domain"
     echo "2. Will be available soon"
     echo "0. Back"
     read -r -p "Choose option: " choice
