@@ -107,6 +107,8 @@ services:
     container_name: ${NODE_NAME}
     image: remnawave/node:latest
     restart: always
+    cap_add:
+      - NET_ADMIN
     network_mode: host
     logging:
       driver: "none"
